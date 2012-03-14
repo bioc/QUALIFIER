@@ -1,0 +1,29 @@
+importFrom(MASS, huber, rlm)
+
+importFrom(stats4, plot)
+
+
+importFrom(RSVGTipsDevice, devSVGTips, setSVGShapeToolTip,
+           setSVGShapeURL)
+
+importFrom(hwriter, closePage, hwrite, openPage)
+
+
+#importFrom(plyr, is.formula)
+
+exportClasses(qaTask)
+
+export( "saveToDB"
+                ,"makeQaTask"
+                ,"proportion.outliers.robust"
+                ,"proportion.outliers.mle"
+                ,"qoutlier"
+                ,"outlier.cutoff"
+                ,"outlier.t"
+                ,"outlier.norm"
+                ,rlm
+                )
+
+
+exportMethods("plot","qaCheck","getQAStats","qaReport","qpar","qpar<-")          
+
