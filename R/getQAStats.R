@@ -50,14 +50,14 @@ setMethod("getQAStats",signature("GatingSet"),function(obj,isFlowCore=TRUE,nslav
 				cl<-parallel::makeCluster(nslaves,type="SOCK")
 				statsOfGS<-parallel::parLapply(cl,glist,function(gh){
 					library(QUALIFIER)
-					getQAStats(gh)
+					getQAStats(gh,isFlowCore=isFlowCore)
 					})
 			parallel::stopCluster(cl)
 			}else
 			{
 				message("It is currently running in serial mode and the parallel mode is recommend for faster processing.")
 				
-				statsOfGS<-lapply(glist,getQAStats)
+				statsOfGS<-lapply(glist,getQAStats,isFlowCore=isFlowCore)
 			}
 			
 			statsOfGS
@@ -73,7 +73,7 @@ setMethod("getPath",signature("GatingHierarchy"),function(x,y,...){
 				paste("/",path,sep="")
 				})
 ##extract stats from a gating hierarchy\\
-setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore...){
+setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore,...){
 			
 			statsOfGh<-NULL#data.frame(id=as.integer(),node=as.character(),population=as.character(),stats=as.character(),value=as.numeric())
 	#		params<-colnames(getData(gh))#TODO:it is wierd that colnames methods does not work after enter this function
