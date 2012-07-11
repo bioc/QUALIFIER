@@ -4,12 +4,16 @@
 ###############################################################################
 ##generate report for qaTask list
 setMethod("qaReport", signature=c(obj="list"),
-		function(obj,outDir,plotAll=FALSE,...){
+		function(obj,outDir,plotAll=FALSE,subset,...){
 			if(missing(outDir))
 				stop("outDir has to be specified!")
 			p<-.writeHead(outDir,...)
-#			browser()
-			qaWrite.list(obj,p,outDir,plotAll)
+
+			if(missing(subset))
+				qaWrite.list(obj,p,outDir,plotAll)
+			else
+				qaWrite.list(obj,p,outDir,plotAll,Subset=substitute(subset))
+			
 		})
 ##generate report for single qaTask 
 setMethod("qaReport", signature=c(obj="qaTask"),
@@ -37,7 +41,7 @@ qaWrite.list<-function(x,page,...){
 			closePage(page, splash=FALSE)
 		}
 
-qaWrite.task<-function(x,p,outDir,plotAll){
+qaWrite.task<-function(x,p,outDir,plotAll,Subset){
 			
 			imageDir<-file.path(outDir,"image")
 			
@@ -271,7 +275,7 @@ qaWrite.task<-function(x,p,outDir,plotAll){
 					factors<-lapply(groupBy,function(x){
 								eval(substitute(yy$v,list(v=x)))
 							})
-					by(yy,factors,function(sub2,x,groupBy){
+					by(yy,factors,function(sub2,x,groupBy,Subset){
 								
 #											browser()
 								#find the outliers of the current pannael
@@ -333,8 +337,9 @@ qaWrite.task<-function(x,p,outDir,plotAll){
 														)
 								plotCallStr$subset[[2]]<-as.symbol(eval(plotCallStr$subset[[2]]))
 								plotCallStr$subset[[3]]<-as.character(eval(plotCallStr$subset[[3]]))
-#	
-#						
+								
+								if(!missing(Subset))
+									plotCallStr$subset<-as.call(list(as.symbol("&"),plotCallStr$subset,Subset))						
 								imageName<-eval(plotCallStr)
 
 #								imageName<-eval(parse(text=plotCallStr))
@@ -398,6 +403,7 @@ qaWrite.task<-function(x,p,outDir,plotAll){
 							}
 							,x
 							,groupBy
+							,Subset
 					)
 				}else
 				{
@@ -434,13 +440,21 @@ qaWrite.task<-function(x,p,outDir,plotAll){
 					
 #							browser()
 					##make sure the w and h pass to plot and large enough to display strip text
-					imageName<-plot(x
-							,y=getFormula(x)
-							,plotAll=plotAll
-							,dest=imageDir
-							,width=27,height=13)
 					
-#							browser()
+					
+					thisCall<-	quote(
+										plot(x
+											,y=getFormula(x)
+											,plotAll=plotAll
+											,dest=imageDir
+											,width=27,height=13
+											)
+										)
+					
+					if(!missing(Subset))
+						thisCall$subset<-Subset
+					imageName<-eval(thisCall)
+					
 					rownames(castResult)<-NULL#1:nrow(castResult)
 					#section
 					hwrite(paste(
