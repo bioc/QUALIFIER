@@ -15,21 +15,25 @@
 #	saveXML(top,sfile )
 #	
 #}
-#the convienient wrapper that does saveToDB,getQAStats,makeQaTask 3 steps in one call
-qaPreprocess<-function(db,G,metaFile,checkListFile,fcs.colname="name")
-{
-	anno<-read.csv(metaFile)
-#	browser()
-	##associate the anno with gating set and save them in db
-	saveToDB(db,G,anno,fcs.colname)
-	#extract stats from gating set named as "G" that was stored in db
-	getQAStats(db)
-	
-	qaTask.list<-makeQaTask(db,checkListFile)
-	#return a task list
-	qaTask.list
-}
 
+initDB<-function(db=.db){
+	createDbSchema(db)
+}
+#the convienient wrapper that does saveToDB,getQAStats,makeQaTask 3 steps in one call
+qaPreprocess<-function(db=.db,gs,gs.name="default gatingSet",metaFile,fcs.colname="name",date.colname=NULL,...)
+{
+	
+	##associate the anno with gating set and save them in db
+	gsid<-saveToDB(db,gs,gs.name,metaFile,fcs.colname,date.colname)
+		
+	#extract stats from gating set named as "G" that was stored in db
+#	browser()
+	
+	getQAStats(db,gsid,...)
+	
+	
+	ls(db)
+}
 .postProcessSVG<-function(sfile)
 {
 
@@ -63,13 +67,14 @@ matchStatType<-function(db,formuRes)
 	for(CurTerm in c("xTerm","yTerm"))
 	{
 		strTerm<-as.character(formuRes[[CurTerm]])
-		if(!is.na(match(strTerm,levels(db$statsOfGS$stats))))
+		if(!is.na(match(strTerm,levels(db$stats$stats))))
 		{
 			statsType=strTerm
 			break
 		}
 	}
-	
+	if(is.null(statsType))
+		stop("formula does not contain valid stats type!")
 	return(statsType)
 }
 #TODO:refere to latticeParseFormula for more generic parser
@@ -141,30 +146,49 @@ matchStatType<-function(db,formuRes)
 #cell number(first node in gating hierachy) marginal events and MFI are also based on sub-populations defined by manual gates
 #which are extracted during the batch process of storing % and MFI
 
-saveToDB<-function(db,G,annoData,fcs.colname="name")
+saveToDB<-function(db=.db,gs,gs.name="default gatingSet",metaFile,fcs.colname="name",date.colname=NULL)
 {
+	
+
 	#####load sample info from xls
+	if(missing(metaFile))
+		annoData<-data.frame(name=getSamples(gs))
+	else
+		annoData<-read.csv(metaFile)
 	
 	annoData$id<-1:nrow(annoData)
+#		browser()
 	if(!fcs.colname%in%colnames(annoData))
 		stop("column that specify FCS file names is missing in annotation data!")
 	#rename the fcs filename column so that it can be fit into flowSet pData slot
 	colnames(annoData)[which(colnames(annoData)==fcs.colname)]<-"name"
 
-	#do some filtering for annoData
-	annoData<-subset(annoData,name%in%getSamples(G))
+	#format date columns
+#	browser()
+	if(!is.null(date.colname))
+	{
+		if(!all(date.colname%in%colnames(annoData)))
+			warning("date column not found in annotation data!")
+		else
+			annoData[,date.colname]<-sapply(annoData[,date.colname,drop=F],function(x){
+#																			browser()
+																			as.Date(as.character(x),"%m/%d/%y")
+																		}
+											,simplify=FALSE)
+					
+	}
 	
-	#do some format converting
-#	annoData$RecdDt<-as.Date(annoData$RecdDt,"%m/%d/%y")
-#	annoData$AnalysisDt<-as.Date(annoData$AnalysisDt,"%m/%d/%y")
-
+	
+	#do some filtering for annoData
+	annoData<-subset(annoData,name%in%getSamples(gs))
+	
 		
 	##fit it into GatingSet(or flowSet)
 	rownames(annoData)<-annoData$name
 	
-	G<-G[which(getSamples(G)%in%annoData$name)]
+	gs<-gs[which(getSamples(gs)%in%annoData$name)]
 	
-	annoData<-annoData[getSamples(G),]	#sort by sample order in gh
+	annoData<-annoData[getSamples(gs),]	#sort by sample order in gh
 
 	##extract tubeID from filename by stripping the first two prefix (presummably date and fileid on each tube)
 	annoData$tubeID<-unlist(lapply(annoData$name,function(x){
@@ -175,41 +199,30 @@ saveToDB<-function(db,G,annoData,fcs.colname="name")
 					}))
 
 
-	pData(G)<-annoData
+	pData(gs)<-annoData
 	#do the filtering for Gating set
 	
 	
 	###append the data to db
-
-	db$params<-colnames(getData(G[[1]]))
-	db$G<-G
-	db$GroupOutlierResult<-db$outlierResult<-data.frame(sid=integer(),qaID=integer(),stringsAsFactors=F)
-	db
-}
-
-
-
-makeQaTask<-function(db,checkListFile)
-{
-	qaCheckList<-read.csv(checkListFile)
+	result<-try(colnames(getData(gs[[1]])),silent=TRUE)
+	if(!inherits(result,"try-error")){
+		db$params<-result
+	}
 	
-	qaTask.list<-apply(qaCheckList,1,function(curRow,db){
-#browser()			
-				curQa<-new("qaTask"
-						,qaID=as.integer(curRow["qaID"])
-						,qaName=curRow["qaName"]
-						,description=curRow["description"]
-						,qaLevel=curRow["qaLevel"]
-						,pop=curRow["pop"]
-						,formula=as.formula(curRow["formula"])
-						,plotType=curRow["plotType"]
-						,db=db
-				)
-				curQa					
-			},db)
-	names(qaTask.list)<-qaCheckList$qaName
-	qaTask.list
+
+	if(nrow(db$gstbl)==0)
+		gsid<-1
+	else
+		gsid<-max(db$gstbl$gsid)+1
+	db$gstbl<-rbind(db$gstbl,data.frame(gsid=gsid,gsname=gs.name))
+#	browser()	
+	db$gs[[gsid]]<-gs
+	gsid
 }
+
+
+
+
 
 matchNode<-function(pattern,nodePath,isTerminal=FALSE,fixed=FALSE)
 {
@@ -253,15 +266,57 @@ matchNode<-function(pattern,nodePath,isTerminal=FALSE,fixed=FALSE)
 	
 }
 
+##API to query stats entries from db by qaTask object and formula
+setMethod("queryStats", signature=c(x="qaTask"),
+		function(x,y,subset,pop,isTerminal=TRUE,fixed=FALSE,gsid=NULL,...){
+			
+			if(missing(y))
+				y<-getFormula(x)
+			db<-getData(x)
+			formuRes<-.formulaParser(y)
+			#determine the statsType(currently only one of the terms can be statType,we want to extend both in the future)
+			statsType<-matchStatType(db,formuRes)
+			if(missing(pop))
+				pop<-getPop(x)
+#			browser()
+			if(missing(subset))
+				res<-.queryStats(db,statsType=statsType,pop=pop,isTerminal=isTerminal,fixed=fixed,gsid=gsid)
+			else
+				res<-.queryStats(db,statsType=statsType,substitute(subset),pop=pop,isTerminal=isTerminal,fixed=fixed,gsid=gsid)
+			
+			if(nrow(res)!=0)
+			{
+				
+				#append the outlier flag
+				res$outlier<-res$sid%in%base::subset(db$outlierResult,qaID==qaID(x))$sid
+				res$gOutlier<-res$sid%in%base::subset(db$GroupOutlierResult,qaID==qaID(x))$sid	
+				
+			}
+			
+			
+			res
+		})
 #queryStats<-function(db,formula,Subset,pop=character(0),isReshape=FALSE)
-queryStats<-function(db,Subset,statsType=NULL,pop=character(0),isTerminal=FALSE,fixed=FALSE)
+.queryStats<-function(db,Subset,statsType=NULL,pop=character(0),isTerminal=FALSE,fixed=FALSE,gsid)
 {
 #	browser()
 
-	
-	ret_anno<-pData(db$G)
-	
-	ret_stats<-db$statsOfGS
+	if(is.null(gsid))
+	{
+		ret_anno<-lapply(1:length(db$gs),function(i){
+									
+									meta<-pData(db$gs[[i]])
+									meta$gsid=i
+									meta
+							})
+		ret_anno<-do.call(rbind,ret_anno)
+					
+	}else	
+	{
+		ret_anno<-pData(db$gs[[gsid]])
+		ret_anno$gsid=gsid
+	}
+	ret_stats<-db$stats
 	
 #	browser()
 	#filter by subset ,use eval instead of subset since subset is now a filtering argument instead of the function 
@@ -274,7 +329,7 @@ queryStats<-function(db,Subset,statsType=NULL,pop=character(0),isTerminal=FALSE,
 	if(!is.null(statsType))
 		ret_stats<-subset(ret_stats,stats%in%statsType)
 	
-	ret<-merge(ret_stats,ret_anno,by.x="id",by.y="id")
+	ret<-merge(ret_stats,ret_anno,by.x=c("gsid","id"),by.y=c("gsid","id"))
 	
 	##add stain column from tube and channel
 	ret$stain<-apply(ret,1,function(x){
@@ -303,21 +358,6 @@ queryStats<-function(db,Subset,statsType=NULL,pop=character(0),isTerminal=FALSE,
 	}
 #		browser()
 	
-	##apply the function to value in each group
-#	if(!is.null(func))
-#	{
-#		factors<-lapply(groupBy,function(x){
-#
-#					eval(substitute(ret$v,list(v=x)))
-#				})
-##					browser()		
-#		ret<-by(ret,factors,function(x){
-##							browser()
-#					x$value<-eval(substitute(f(x$value),list(f=func)))
-#					x
-#				})
-#		ret<-do.call("rbind",ret)
-#	}
 	
 	ret
 	

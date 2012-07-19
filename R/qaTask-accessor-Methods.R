@@ -7,6 +7,20 @@ setMethod("qaID", signature=c(x="qaTask"),
 		function(x){
 			x@qaID
 		})
+setMethod("highlight", signature=c(x="qaTask"),
+		function(x){
+			x@highlight
+		})
+
+setReplaceMethod("highlight",
+		signature=signature(object="qaTask",value="character"),
+		definition=function(object, value)
+		{
+#			browser()
+			object@highlight<-value
+			return(object)
+		})
+
 setMethod("qpar", signature=c(x="qaTask"),
 		function(x){
 			x@par
@@ -17,9 +31,10 @@ setReplaceMethod("qpar",
 				value="list"),
 		definition=function(object, value)
 		{
-			object@par<-value
+			object@par<-lattice:::updateList(object@par,value)
 			return(object)
 		})
+
 setMethod("scatterPar", signature=c(x="qaTask"),
 		function(x){
 			x@scatterPar
@@ -30,7 +45,7 @@ setReplaceMethod("scatterPar",
 				value="list"),
 		definition=function(object, value)
 		{
-			object@scatterPar<-value
+			object@scatterPar<-lattice:::updateList(object@scatterPar,value)
 			return(object)
 		})
 

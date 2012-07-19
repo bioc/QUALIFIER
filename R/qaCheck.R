@@ -2,11 +2,13 @@
 # 
 # Author: mike
 ###############################################################################
-clearCheck<-function(obj)
+clearCheck<-function(obj,gsid)
 {
 #	browser()
+	if(missing(gsid))
+		gsid<-max(db$gstbl$gsid)
 	db<-getData(obj)
-	ind<-db$outlierResult$qaID%in%qaID(obj)
+	ind<-db$outlierResult$qaID%in%qaID(obj)&db$outlierResult$gsid%in%gsid
 	db$outlierResult<-db$outlierResult[!ind,]
 	
 }
@@ -74,7 +76,8 @@ setMethod("qaCheck", signature=c(obj="qaTask"),
 							eval(cur.call.f)
 							
 						}
-						return()
+#						browser()
+						return("done!")
 					}
 				}
 				
@@ -90,7 +93,7 @@ setMethod("qaCheck", signature=c(obj="qaTask"),
 			
 		})
 
-.qaCheck<-function(obj,formula=NULL,Subset,outlierfunc=NULL,gOutlierfunc=NULL,rFunc=NULL,isTerminal=TRUE,fixed=FALSE,...){
+.qaCheck<-function(obj,formula=NULL,Subset,outlierfunc=NULL,gOutlierfunc=NULL,rFunc=NULL,isTerminal=TRUE,fixed=FALSE,gsid=NULL,...){
 #	browser()
 
 	qaID<-qaID(obj)
@@ -129,19 +132,18 @@ setMethod("qaCheck", signature=c(obj="qaTask"),
 	##query db
 	if(missing(Subset))
 	{		
-		yy<-queryStats(db,statsType=statsType,pop=getPop(obj),isTerminal=isTerminal,fixed=fixed)
+		yy<-.queryStats(db,statsType=statsType,pop=getPop(obj),isTerminal=isTerminal,fixed=fixed,gsid=gsid)
 		
 	}else
 	{
-		yy<-queryStats(db,statsType=statsType,Subset,pop=getPop(obj),isTerminal=isTerminal,fixed=fixed)
+		yy<-.queryStats(db,statsType=statsType,Subset,pop=getPop(obj),isTerminal=isTerminal,fixed=fixed,gsid=gsid)
 		
 	}
 #		browser()	
 	if(nrow(yy)==0)
-		{
-			warning("empty subsets!")
-			return()
-		}
+	{
+		return("empty subsets!")
+	}
 		
 	yy<-cast(yy,...~stats)
 		
@@ -154,7 +156,7 @@ setMethod("qaCheck", signature=c(obj="qaTask"),
 	
 	
 	factors<-lapply(groupBy,function(x){
-				eval(substitute(yy$v,list(v=x)))
+				eval(substitute(factor(yy$v),list(v=x)))
 			})
 	
 	##detect group outlier if boxplot
@@ -244,7 +246,7 @@ setMethod("qaCheck", signature=c(obj="qaTask"),
 	db$outlierResult<-db$outlierResult[!ind,]
 	ind<-db$GroupOutlierResult$sid%in%yy$sid&qaID==db$GroupOutlierResult$qaID
 	db$GroupOutlierResult<-db$GroupOutlierResult[!ind,]
-	
+#	browser()
 	#append the new one
 	if(length(stats_list)>0)
 	{

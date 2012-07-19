@@ -4,7 +4,7 @@
 ###############################################################################
 
 ##add svg anno to the original panel function for xyplot of lattice package
-##individual oultiers are colored based on the groups argument which passed through oultier column of dataframe
+##individual oultiers are colored based on the groups argument which passed through oultier column of dfframe
 panel.xyplotEx <-
 		function(x, y, type = "p",
 				groups = NULL,
@@ -19,13 +19,25 @@ panel.xyplotEx <-
 				cex = if (is.null(groups)) plot.symbol$cex else superpose.symbol$cex,
 				fill = if (is.null(groups)) plot.symbol$fill else superpose.symbol$fill,
 				lwd = if (is.null(groups)) plot.line$lwd else superpose.line$lwd,
-				horizontal = FALSE,
-				...,
-				grid = FALSE, abline = NULL,
+				horizontal = FALSE
+				,subscripts
+				,dest
+				,df
+				,plotObjs
+				,plotAll=FALSE
+				,statsType
+				,scatterPar
+				,highlight
+				,db
+				,rFunc=NULL
+				,...
+				,grid = FALSE, abline = NULL,
 				jitter.x = FALSE, jitter.y = FALSE,
 				factor = 0.5, amount = NULL,
 				identifier = "xyplot")
 {
+	
+#	browser()
 	if (all(is.na(x) | is.na(y))) return()
 	plot.symbol <- trellis.par.get("plot.symbol")
 	plot.line <- trellis.par.get("plot.line")
@@ -47,67 +59,79 @@ panel.xyplotEx <-
 					list(h = 0, v = 0))
 		do.call(panel.grid, grid)
 	}
-#	browser()
+
 	if (!is.null(abline))
 	{
 		if (is.numeric(abline)) abline <- as.list(abline)
 		do.call(panel.abline, abline)
 	}
-#	browser()
+#	browser()	
 	
 	if (!is.null(groups))
-		panel.superpose(x, y,
-				type = type,
-				groups = groups,
-				pch = pch,
-				col.line = col.line,
-				col.symbol = col.symbol,
-				font = font,
-				fontfamily = fontfamily,
-				fontface = fontface,
-				lty = lty,
-				cex = cex,
-				fill = fill,
-				lwd = lwd,
-				horizontal = horizontal,
-				panel.groups = panel.xyplotEx,
-				jitter.x = jitter.x,
-				jitter.y = jitter.y,
-				factor = factor,
-				amount = amount,
-				grid = FALSE, ## grid=TRUE/type="g" already handled
-				...)
+		panel.superpose(x=x, y=y
+				,groups = groups
+				,panel.groups = panel.xyplotEx
+				,subscripts=subscripts
+				,dest=dest
+				,df=df
+				,plotObjs=plotObjs
+				,plotAll=plotAll
+				,statsType=statsType
+				,scatterPar=scatterPar
+				,highlight=highlight
+				,db=db
+#				,rFunc=rFunc
+				,...
+				,type = type
+				,pch = pch
+				,col.line = col.line
+				,col.symbol = col.symbol
+				,font = font
+				,fontfamily = fontfamily
+				,fontface = fontface
+				,lty = lty
+				,cex = cex
+				,fill = fill
+				,lwd = lwd
+				,horizontal = horizontal
+				,jitter.x = jitter.x
+				,jitter.y = jitter.y
+				,factor = factor
+				,amount = amount
+				,grid = FALSE ## grid=TRUE/type="g" already handled
+				)
 	else
 	{
 		x <- as.numeric(x)
 		y <- as.numeric(y)
 		id <- identifier
-#		browser()
-		dest<-list(...)$dest
-		
-#		dest<-NULL
+	
+#		dest<-list(...)$dest
 		if(!is.null(dest))
 		{
 			###add svg anno
-			rowIds<-list(...)$subscripts
-			data<-list(...)$data
-			plotObjs<-list(...)$plotObjs
-			plotAll<-list(...)$plotAll
-			statsType<-list(...)$statsType
-			scatterPar<-list(...)$scatterPar
+#			rFunc<-list(...)$rFunc
+#			subscripts<-list(...)$subscripts
+
+#			plotObjs<-list(...)$plotObjs
+#			plotAll<-list(...)$plotAll
+#			statsType<-list(...)$statsType
+#			scatterPar<-list(...)$scatterPar
+#			db<-list(...)$db
+#			if(is.null(plotAll))
+#				plotAll=FALSE
+#		browser()
+			rowIds<-subscripts
+			#should not subset df since subscripts are global indices to the original dataframe
 			
-			db<-list(...)$db
-#			browser()
-			if(is.null(plotAll))
-				plotAll=FALSE
-#			browser()
 			if ("o" %in% type || "b" %in% type) type <- c(type, "p", "l")
 			if ("p" %in% type)
 				for(i in 1:length(x))
 				{
 					curRowID<-rowIds[i]
-					curOutRow<-data[curRowID,]
-					FileTips<-paste("uniqueID=",curOutRow$id," file=",curOutRow$name,sep="")
+					curOutRow<-df[curRowID,]
+#					browser()
+					FileTips<-paste(highlight,"=",curOutRow[highlight]," file=",curOutRow$name,sep="")
 					setSVGShapeToolTip(title=FileTips,sub.special=FALSE)
 					#				browser()
 					paths<-QUALIFIER:::.FileNameGen(prefix="f",ID=curOutRow$id,population=as.character(curOutRow$population)
@@ -122,10 +146,10 @@ panel.xyplotEx <-
 						{
 							##save the individual plot obj
 #						browser()
-							assign(basename(paths),qa.singlePlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
+							assign(basename(paths),qa.GroupPlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
 							
 #						png(file.path(dest,paths))
-#						qa.singlePlot(db,curOutRow)
+#						qa.GroupPlot(db,curOutRow)
 #						dev.off()
 #						dev.set(2)
 							
@@ -219,9 +243,68 @@ panel.xyplotEx <-
 					lty = lty,
 					col.line = col.line,
 					...)
+		
+	
+		
 	}
+	
+		
+	
 }
 
+panel.xyplot.qa<-function(x,y,rFunc=NULL,...){
+#	browser()
+	panel.xyplotEx(x=x,y=y,...) 
+	#if regression function is supplied, then plot the regression line
+	if(!is.null(rFunc))
+	{
+		
+#											x1<-as.Date(x,"%m/%d/%y")
+		reg.res<-try(rFunc(y~x),silent=TRUE)
+		if(all(class(reg.res)!="try-error"))
+		{
+			sumry<-summary(reg.res)
+			if(class(sumry)=="summary.rlm"){
+				coefs<-coef(sumry)
+				t.value<-coefs[,"t value"]
+				slope<-coefs[2,"Value"]
+				intercept<-coefs[1,"Value"]
+				df<-summary(reg.res)$df
+				pvalues<-pt(abs(t.value),df=df[1],lower.tail=FALSE)
+				intercept.p<-pvalues[1]
+				slope.p<-pvalues[2]
+			}else if (class(sumry)=="summary.lm"){
+				pvalues<-coefficients(sumry)[,4]
+				slope<-coefficients(sumry)[2,1]
+				intercept.p<-pvalues[1]
+				slope.p<-pvalues[2]
+				
+			}	
+			if(any(pvalues<0.05))
+			{
+				regLine.col<-"red"
+			}else
+			{
+				regLine.col<-"black"
+			}
+			curVp<-current.viewport()
+			
+			
+			panel.text(x=mean(curVp$xscale)
+					,y=quantile(curVp$yscale)[4]
+					,labels=paste("s=",format(slope*30,digits=2)
+							#														," v=",format(var(y),digits=2)
+							,"\np=",paste(format(slope.p,digits=2),collapse=",")
+					)
+					,cex=0.5
+			#										,col="white"		
+			)
+			
+			panel.abline(reg.res,col=regLine.col,lty="dashed")
+			
+		}
+	}
+}
 ##add svg anno to the original panel function for boxplot of lattice package
 panel.bwplotEx <-
 		function(x, y, box.ratio = 1, box.width = box.ratio / (1 + box.ratio),
@@ -236,9 +319,18 @@ panel.bwplotEx <-
 				fill = box.rectangle$fill,
 				varwidth = FALSE,
 				notch = FALSE,
-				notch.frac = 0.5,
-				...,
-				levels.fos = if (horizontal) sort(unique(y)) else sort(unique(x)),
+				notch.frac = 0.5
+				,...
+				,dest
+				,subscripts
+				,df
+				,groupBy
+				,plotObjs
+				,plotAll=FALSE
+				,statsType
+				,scatterPar
+				,db
+				,levels.fos = if (horizontal) sort(unique(y)) else sort(unique(x)),
 				stats = boxplot.statsEx,
 				coef = 1.5, do.out = TRUE,
 				identifier = "bwplot")
@@ -259,24 +351,11 @@ panel.bwplotEx <-
 	yscale <- cur.limits$ylim
 	
 	if (!notch) notch.frac <- 0
-#	browser()
-	dest<-list(...)$dest
-#		dest<-NULL
 	
-	gOutResult<-list(...)$gOutResult
-	rowIds<-list(...)$subscripts
-	data=list(...)$data[rowIds,]
-	groupBy<-list(...)$groupBy
-	plotObjs<-list(...)$plotObjs
-	plotAll<-list(...)$plotAll
-	statsType<-list(...)$statsType
-	scatterPar<-list(...)$scatterPar
+	rowIds<-subscripts
+	df<-df[rowIds,]#we do need subsetting here since boxplot does not use groups argument to superpose plot
 	
-	db<-list(...)$db
-	if(is.null(plotAll))
-		plotAll=FALSE
-	
-	dataGroups<-split(data,f=eval(parse(text=paste("data$",groupBy,sep=""))),drop=TRUE)
+	dataGroups<-split(df,f=eval(parse(text=paste("df$",groupBy,sep=""))),drop=TRUE)
 	nGroups<-length(dataGroups)	
 #	browser()
 	if (horizontal)
@@ -319,10 +398,7 @@ panel.bwplotEx <-
 				ybot + notch.frac * blist.height / 2,
 				ybot, ybot, ytop, ytop,
 				ytop - notch.frac * blist.height / 2)
-		## xs <- matrix(NA_real_, nrow = nrow(xbnd) * 2, ncol = ncol(xbnd))
-		## ys <- matrix(NA_real_, nrow = nrow(xbnd) * 2, ncol = ncol(xbnd))
-		## xs[seq(along.with = levels.fos, by = 2), ] <- xbnd[seq(along.with = levels.fos), ]
-		## ys[seq(along.with = levels.fos, by = 2), ] <- ybnd[seq(along.with = levels.fos), ]
+		
 		
 		## box
 		
@@ -344,7 +420,7 @@ panel.bwplotEx <-
 			if(!is.null(dest))
 				setSVGShapeToolTip(title=groupTips,sub.special=FALSE)
 			##lattice plot for outlier group
-			
+#			browser()
 			if(plotAll!="none"&&!is.null(dest))
 			{
 				if(cur.btw.groups.outliers||plotAll==TRUE)
@@ -361,7 +437,7 @@ panel.bwplotEx <-
 					##can't print right away since there is issue with embeded lattice plot
 					##some how it alter the viewport or leves of parent lattice object 
 #				browser()
-					curPlotObj<-qa.GroupPlot(db,curGroup,par=scatterPar)
+					curPlotObj<-qa.GroupPlot(db,curGroup,statsType=statsType,par=scatterPar)
 					if(!is.null(curPlotObj))
 					{
 						assign(basename(paths),curPlotObj,envir=plotObjs)
@@ -376,7 +452,7 @@ panel.bwplotEx <-
 					lty = box.rectangle$lty,
 					col = fill,
 					alpha = box.rectangle$alpha,
-					border = ifelse(cur.btw.groups.outliers,"red",box.rectangle$col),
+					border = ifelse(cur.btw.groups.outliers,"#E41A1C",box.rectangle$col),
 					identifier = paste(identifier, "box", sep="."))
 			## end of major changes to support notches
 			
@@ -454,7 +530,7 @@ panel.bwplotEx <-
 						
 						##save the individual plot obj
 	#						browser()
-						assign(basename(paths),qa.singlePlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
+						assign(basename(paths),qa.GroupPlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
 						
 						
 						setSVGShapeURL(paths)
@@ -560,7 +636,7 @@ panel.bwplotEx <-
 					##can't print right away since there is issue with embeded lattice plot
 					##some how it alter the viewport or leves of parent lattice object 
 #				browser()
-					curPlotObj<-qa.GroupPlot(db,curGroup,par=scatterPar)
+					curPlotObj<-qa.GroupPlot(db,curGroup,statsType=statsType,par=scatterPar)
 					if(!is.null(curPlotObj))
 					{
 						assign(basename(paths),curPlotObj,envir=plotObjs)
@@ -577,7 +653,7 @@ panel.bwplotEx <-
 					col = fill,
 					alpha = box.rectangle$alpha,
 					border = ifelse(cur.btw.groups.outliers,"red",box.rectangle$col),
-					identifier = paste(identifier, "box", sep="."))
+					identifier = paste(identifier, "#E41A1C", sep="."))
 			
 			## whiskers
 			
@@ -652,7 +728,7 @@ panel.bwplotEx <-
 
 					##save the individual plot obj
 #						browser()
-					assign(basename(paths),qa.singlePlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
+					assign(basename(paths),qa.GroupPlot(db,curOutRow,statsType=statsType,par=scatterPar),envir=plotObjs)
 					
 					
 					setSVGShapeURL(paths)
@@ -708,6 +784,8 @@ boxplot.statsEx<-function (x, coef = 1.5, do.conf = TRUE, do.out = TRUE)
 										nna] else numeric())
 }
 
+#TODO:move this to flowViz as well
+##right now in QUALIFIER I replace all the 1-D density plot with xyplot instead.
 #qa.panel.densityplot<-function(x,y,frames,filter,channel,channel.name,overlap,...)
 qa.panel.densityplot<-function(...)
 {
@@ -759,196 +837,22 @@ qa.panel.densityplot<-function(...)
 	
 	
 }
-## Panel function copied from flowViz and change the way it handles density color
-panel.xyplot.flowframeEx <- function (x, y, frame, filter = NULL, smooth = TRUE, margin = TRUE, 
-		outline = FALSE, channel.x.name, channel.y.name, pch = gpar$flow.symbol$pch, 
-		alpha = gpar$flow.symbol$alpha, cex = gpar$flow.symbol$cex, 
-		col = gpar$flow.symbol$col, gp,outlier=TRUE, ...) 
+##mark outliers by by gate color
+panel.xyplot.flowframeEx <- function (gp,outlier=TRUE, ...) 
 {
-	argcolramp <- list(...)$colramp
-	gpar <- flowViz.par.get()
-	if (!is.null(gp)) 
-		gpar <- lattice:::updateList(gpar, gp)
-	if (is.null(gpar$gate$cex)) 
-		gpar$gate$cex <- cex
-	if (is.null(gpar$gate$pch)) 
-		gpar$gate$pch <- pch
-	validName <- !(length(grep("\\(", channel.x.name)) || length(grep("\\(", 
-								channel.y.name)))
-#				browser()
 	
-	if (smooth) {
-		if (margin) {
-			r <- range(frame, c(channel.x.name, channel.y.name))
-			l <- length(x)
-			inc <- apply(r, 2, diff)/1e+05
-			dots <- list(...)
-			nb <- if ("nbin" %in% names(dots)) 
-						rep(dots$nbin, 2)
-					else rep(64, 2)
-			selxL <- x > r[2, channel.x.name] - inc[1]
-			selxS <- x < r[1, channel.x.name] + inc[1]
-			selyL <- y > r[2, channel.y.name] - inc[2]
-			selyS <- y < r[1, channel.y.name] + inc[2]
-			allsel <- !(selxL | selxS | selyL | selyS)
-			if (sum(allsel) > 0) {
-				panel.smoothScatter(x[allsel], y[allsel], range.x = list(r[, 
-										1], r[, 2]), ...)
-				flowViz:::addMargin(r[1, channel.x.name], y[selxS], r, 
-						l, nb)
-				flowViz:::addMargin(r[2, channel.x.name], y[selxL], r, 
-						l, nb, b = TRUE)
-				flowViz:::addMargin(x[selyS], r[1, channel.y.name], r, 
-						l, nb)
-				flowViz:::addMargin(x[selyL], r[2, channel.y.name], r, 
-						l, nb, b = TRUE)
-			}
-			else {
-				panel.smoothScatter(x, y, ...)
-			}
-		}
-		else {
-			panel.smoothScatter(x, y, ...)
-		}
-		flowViz:::plotType("gsmooth", c(channel.x.name, channel.y.name))
-#		if (!is.null(filter) & validName) {
-#			glpolygon(filter, frame, channels = c(channel.x.name, 
-#							channel.y.name), verbose = FALSE, gpar = gpar, 
-#					strict = FALSE, ...)
-#		}
+	if(!is.null(outlier))
+	{
+		gp$gate$col<-ifelse(outlier,"red","black")	
+	}else
+	{
+		gp$gate$col<-"black"
 	}
-	else {
-		
-		if (!is.null(argcolramp)) {
-			col <- densCols(x, y, colramp = argcolramp)
-		}
-		panel.xyplot(x, y, col = col, cex = cex, pch = pch, main="gateName",
-				alpha = alpha, ...)
-		
-		flowViz:::plotType("gpoints", c(channel.x.name, channel.y.name))
-	}
-#	browser()
-	##plot filter
-	if (!is.null(filter) && validName) {
-		if (!is(filter, "filterResult")) 
-			filter <- flowCore::filter(frame, filter)
-#			rest <- Subset(frame, !filter)
-#			x <- exprs(rest[, channel.x.name])
-#			y <- exprs(rest[, channel.y.name])
-		
-#			browser()
-		
-		if(!is.null(outlier))
-		{
-			gpar$gate$col<-ifelse(outlier,"red","black")	
-		}else
-		{
-			gpar$gate$col<-"black"
-		}
-		
-		
-		glpolygon(filter, frame, channels = c(channel.x.name, 
-						channel.y.name), verbose = FALSE, gpar = gpar, 
-				names = FALSE, strict = FALSE)
-		if(list(...)$names==FALSE)
-		{
-			#add gate label
-			curFres<-filter
-#			browser()
-		
-			p.stats<-flowCore::summary(curFres)@p
-			#remove stats for "rest" pop(usually the first one) from mulitfilterResults produced by filters such as curv2Filter
-			if(length(p.stats)>1)
-				p.stats<-p.stats[-1]
-			p.stats<-sprintf("%.2f%%",p.stats*100)
-			
-			
-			bounds<-QUALIFIER:::gateBoundary(filterDetails(curFres)[[1]]$filter,curFres)
-			
-			for(i in 1:length(bounds))
-			{
-				
-				
-				xcolname<-channel.x.name
-				ycolname<-channel.y.name
-				xlim<-range(x)
-				ylim<-range(y)
-				
-				##fix the vertices outside of the x,y range
-				outInd<-bounds[[i]][,1]>max(x)
-				if(any(outInd))
-					bounds[[i]][outInd,1]<-max(x)
-				
-				
-				
-				outInd<-bounds[[i]][,1]<min(x)
-				if(any(outInd))
-					bounds[[i]][outInd,1]<-min(x)
-				
-			
-				
-				
-#				browser()
-				if(ncol(bounds[[i]])>1)
-				{
-					outInd<-bounds[[i]][,2]>max(y)
-					if(any(outInd))
-						bounds[[i]][outInd,2]<-max(y)
-					
-					outInd<-bounds[[i]][,2]<min(y)
-					if(any(outInd))
-						bounds[[i]][outInd,2]<-min(y)
-					
-					xCenterPos<-eval(parse(text=paste("mean(bounds[[i]][,'",xcolname,"'])",sep="")))
-					yCenterPos<-eval(parse(text=paste("mean(bounds[[i]][,'",ycolname,"'])",sep="")))
-#					yCenterPos<-eval(parse(text=paste("max(bounds[[i]][,'",ycolname,"'])",sep="")))
-					
-#					xleft<-xCenterPos-diff(xlim)/6
-#					xright=xCenterPos+diff(xlim)/6
-#					ybottom=yCenterPos#-diff(ylim)/6
-#					ytop=max(ylim)
-				}else
-				{
-					xCenterPos<-mean(bounds[[i]])
-					yCenterPos<-mean(y)
-					
-					xleft<-xCenterPos-diff(xlim)/6
-					xright=xCenterPos+diff(xlim)/6
-					
-					ybottom=yCenterPos-diff(ylim)/30
-					ytop=yCenterPos+diff(ylim)/30
-				}
-
-	
-				grid.rect(x=unit(xCenterPos,"native")
-						,y=unit(yCenterPos,"native")
-						,width=unit(1,'strwidth',p.stats[i])
-						,height=unit(1,'strheight',p.stats[i])
-						,draw=T, gp=gpar(font=gpar$gate.text$font
-										,fill="white"
-										,col="transparent"
-										,alpha=0.7
-										)
-								)
-				panel.text(
-						x=xCenterPos
-						,y=yCenterPos
-						,labels=p.stats[i]
-						,col=gpar$gate.text$col
-						,alpha=gpar$gate.text$alpha
-#						,lineheight=gpar$gate.text$lineheight
-#						,font=gpar$gate.text$font
-#						,cex=gpar$gate.text$cex
-#						,adj=c(0.5,0.5)
-						,...
-						)
-			}
-			
-		}
-	}
+	flowViz:::panel.xyplot.flowframe(gp=gp,...)	
 }
 
-
+##this is copied from flowViz just for dispatching
+##and the only change is to pass outlier flag to panel.xyplot.flowframeEx
 panel.xyplot.flowsetEx <- function(x,
 		frames,
 		filter=NULL,

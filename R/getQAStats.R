@@ -2,25 +2,47 @@
 # 
 # Author: wjiang2
 ###############################################################################
-
-setMethod("getQAStats",signature("environment"),function(obj,isFlowCore=TRUE,nslaves=NULL,...){
+##TODO:to append the stats to the current table
+setMethod("getQAStats",signature=c("environment"),function(obj,gsid,...){
+			if(missing(gsid))
+				stop("missing gsid!")
 			
-			statsOfGS<-getQAStats(obj$G,isFlowCore,nslaves)
-#						browser()
+			
+			gs<-obj$gs[[gsid]]
+			
+#			browser()
+			
+			statsOfGS<-getQAStats(gs,...)
+			
+			
+			
 			statsOfGS<-lapply(names(statsOfGS),function(curID){
-						curStats<-statsOfGS[[curID]]
-						curStats$id<-as.integer(curID)
-						curStats
-					})
+												curStats<-statsOfGS[[curID]]
+												curStats$id<-as.integer(curID)
+												curStats
+											})
+			statsOfGS<-do.call("rbind",statsOfGS)
+			
 
-			db$statsOfGS<-do.call("rbind",statsOfGS)
-			obj$statsOfGS$sid<-1:nrow(obj$statsOfGS)
+			##append sid and gsid
+			if(nrow(obj$stats)==0)
+				msid<-0
+			else
+				msid<-max(obj$stats$sid)
+			statsOfGS$sid<-1:nrow(statsOfGS)+msid
+			statsOfGS$gsid<-gsid
+			
+
+			#save it db (remove the old records with the same gsid
+#			browser()
+			ind<-obj$stats$gsid==gsid
+			obj$stats<-rbind(obj$stats[!ind,],statsOfGS[,colnames(obj$stats)])
 			print("stats saved!")
 			
 		})
 
 
-setMethod("getQAStats",signature("GatingSet"),function(obj,isFlowCore=TRUE,nslaves=NULL,...){
+setMethod("getQAStats",signature("GatingSet"),function(obj,nslaves=NULL,type="PSOCK",...){
 			
 			
 			print("extracting stats...")
@@ -44,60 +66,69 @@ setMethod("getQAStats",signature("GatingSet"),function(obj,isFlowCore=TRUE,nslav
 				
 				
 			}
-			if(!is.null(nslaves)&&nslaves>1)
-			{
-				message("Using the parallel mode with ",nslaves," cores")
-				cl<-parallel::makeCluster(nslaves,type="SOCK")
-				statsOfGS<-parallel::parLapply(cl,glist,function(gh){
-					library(QUALIFIER)
-					getQAStats(gh,isFlowCore=isFlowCore)
-					})
-			parallel::stopCluster(cl)
-			}else
-			{
-				message("It is currently running in serial mode and the parallel mode is recommend for faster processing.")
-				
-				statsOfGS<-lapply(glist,getQAStats,isFlowCore=isFlowCore)
-			}
+			##parallel mode is not available for gating set of internal structure  
+			##due to the undistributable pointer
+#			if(!is.null(nslaves)&&nslaves>1)
+#			{
+#							
+#				message("Using the parallel mode with ",nslaves," cores")
+#				
+#				cl<-parallel::makeCluster(nslaves,type)
+#				statsOfGS<-parallel::parLapply(cl,glist,function(gh){
+#												library(QUALIFIER)
+#												getQAStats(gh,...)
+#												},...)
+#				parallel::stopCluster(cl)
+#			}else
+#			{
+#				message("It is currently running in serial mode.")
+
+
+#				time1<-Sys.time()
+				statsOfGS<-lapply(glist,getQAStats,...)
+#				Sys.time()-time1
+#			}
 			
 			statsOfGS
 			
 		})
-
-setMethod("getPath",signature("GatingHierarchy"),function(x,y,...){
-#			browser()
-				path_detail<-sp.between(x@tree,getNodes(x)[1],y)[[1]]$path_detail
-				path_detail[1]<-".root"
-				path<-paste(unlist(lapply(path_detail,function(x)strsplit(x,"\\.")[[1]][2]))
-					,collapse="/")
-				paste("/",path,sep="")
-				})
 ##extract stats from a gating hierarchy\\
-setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore,...){
+setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore=TRUE,...){
 			
-			statsOfGh<-NULL#data.frame(id=as.integer(),node=as.character(),population=as.character(),stats=as.character(),value=as.numeric())
-	#		params<-colnames(getData(gh))#TODO:it is wierd that colnames methods does not work after enter this function
-			params<-parameters(getData(obj))$name
+			message("reading GatingHierarchy:",getSample(obj))
+			#check if data is gated
+			params<-try(parameters(getData(obj))$name,silent=TRUE)
+			if(inherits(params,"try-error"))
+				params<-NULL
+			
 			statsPop<-getPopStats(obj)
 			nodes<-getNodes(obj)
-			
+			nodePaths<-getNodes(obj,isPath=T)
+			#convert to QUALIFIER's path
+			nodePaths[1]<-paste("/",nodePaths[1],sep="")
+			nodePaths[-1]<-paste("/root",nodePaths[-1],sep="")
+			nParam<-length(params)-1 #minus time channel
+			nNodes<-length(nodes)
+#					
+			statsOfGh<-NULL
 #			browser()
-			for(i in 1:length(nodes))
+			fdata<-getData(obj)
+			for(i in 1:nNodes)
 			{
+				curPopName<-nodePaths[i]
 				curNode<-nodes[i]
 #				print(curNode)
+				if(!is.null(params))
+				{
+					curData<-getData(obj,curNode)
+					curGate<-getGate(obj,curNode)
+				}
 				
-				curData<-getData(obj,curNode)
-				curGate<-getGate(obj,curNode)
-				
-				##extract pop name
-				curPopName<-getPath(obj,curNode)
-#				browser()
 		
 				##get count and proportion
 				statsOfNode<-subset(statsPop,node==curNode)
 #				if(curPopName%in%c("margin","MFI"))
-				if(!QUALIFIER:::.isRoot(obj,curNode))#&&!is.na(curGate)
+				if(!is.null(params)&&!QUALIFIER:::.isRoot(obj,curNode))#&&!is.na(curGate)
 				{
 					chnl<-parameters(curGate)
 					#only 1D gate needs to save channel info
@@ -107,21 +138,33 @@ setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore,...)
 				{
 					chnl<-NA
 				}
-				statsOfNode<-data.frame(channel=chnl,stats=c("proportion","count"),value=c(statsOfNode$flowCore.freq,statsOfNode$flowCore.count),row.names=NULL)
+				if(isFlowCore)
+				{
+					stats_prop<-statsOfNode$flowCore.freq
+					stats_count<-statsOfNode$flowCore.count	
+				}else
+				{
+					stats_prop<-statsOfNode$flowJo.freq
+					stats_count<-statsOfNode$flowJo.count
+				}
+				
+				statsOfNode<-data.frame(channel=chnl,stats=c("proportion","count")
+										,value=c(stats_prop,stats_count)
+										,row.names=NULL)
 				
 				#get spikes meatures for each channel at root level
-				if(QUALIFIER:::.isRoot(obj,curNode))
+				if(!is.null(params)&&QUALIFIER:::.isRoot(obj,curNode))
 				{
 
 #					browser()
-					expr <- exprs(getData(obj))
+					expr <- exprs(fdata)
 					
 					time <- flowCore:::findTimeChannel(expr)
 					if(!(time %in% colnames(expr)))
 						stop("Invalid name of variable (", time, ") recording the ",
 								"\ntime domain specified as 'time' argument.", call.=FALSE)
 					
-					spikes<-unlist(lapply(params[!params%in%time],QUALIFIER:::.timelineplot,x=getData(obj), binSize=50))
+					spikes<-unlist(lapply(params[!params%in%time],.timelineplot,x=fdata, binSize=50))
 					
 					statsOfNode<-rbind(statsOfNode,data.frame(channel=params[!params%in%time],stats="spike",value=spikes))
 					chnls<-params[!params%in%time] #select channel at root level
@@ -132,9 +175,13 @@ setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore,...)
 				#get MIF meatures
 				if(!is.na(chnl))
 				{
-					MFI<-colMeans(exprs(curData)[,chnl,drop=FALSE])
+#					browser()
+					mat<-exprs(curData)[,chnl,drop=FALSE]
+					chnames<-colnames(mat)
+					MFI<-rowMedians(t(mat))#using rowMedian to speed up
+#					MFI<-colMeans(exprs(curData)[,chnl,drop=FALSE])
 					if(all(!is.na(MFI)))
-						statsOfNode<-rbind(statsOfNode,data.frame(channel=names(MFI),stats="MFI",value=MFI))
+						statsOfNode<-rbind(statsOfNode,data.frame(channel=chnames,stats="MFI",value=MFI))
 				}
 				##append the rows
 				
@@ -153,7 +200,7 @@ setMethod("getQAStats",signature("GatingHierarchy"),function(obj,isFlowCore,...)
 	## Sanity checking up front
 	if(!length(channel)==1)
 		stop("'channel' must be character scalar")
-	if(!channel %in% flowCore:::colnames(x))
+	if(!channel %in% flowCore::colnames(x))
 		stop(channel, " is not a valid channel in this flowSet.")
 	if(tolower(channel) == "time")
 		stop("Argument 'channel' can not be the time channel")
