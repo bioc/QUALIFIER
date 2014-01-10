@@ -59,6 +59,10 @@ NULL
 #'   							It should be a valid column name in the metaFile (see \code{\link{getQAStats} for more details about the meta file}.
 #'   							}
 #'   \item{\code{rFunc}:}{A regression function passed to some qa tasks to monitor the long term trend.}
+#'   \item{\code{outlierFunc}:}{An outlier detection function.}
+#'   \item{\code{outlierFunc_args}:}{named arguments passed to the outlier detection function.}
+#'   \item{\code{goutlierFunc}:}{A group outlier detection function.} 
+#'   \item{\code{goutlierFunc_args}:}{named arguments passed to the group outlier detection function.}
 #'    \item{\code{db}:}{An environment containing the database connection, which stores the gating hierarchy,QA task list,sample information and outliers detection results. .}
 
 #'  }
@@ -123,6 +127,10 @@ setClass("qaTask",
 						,scatterPar="list"#arguments for indivdiual plot
 						,htmlReport="logical"#decide wether to plot even without outliers detected
 						,rFunc="ANY"
+                        ,outlierFunc="ANY"
+                        ,goutlierFunc="ANY"
+                        ,outlierFunc_args="ANY"
+                        ,goutlierFunc_args="ANY"
 						,highlight="character"#argument to determine level on which the dot will be higtlighted when hoverover in svg plot(like FCS,or sampleID ,should be the column name in the meta data) 
 						,db="ANY"
 						),
@@ -143,9 +151,13 @@ setClass("qaTask",
 						,scatterPar=list(type="xyplot"
 										,smooth=FALSE
 										,stat=TRUE)
-						,htmlReport=FALSE
+						,htmlReport = FALSE
 						,rFunc = NULL
-						,highlight= NULL
+						,highlight = NULL
+                        ,outlierFunc = NULL
+                        ,goutlierFunc = NULL
+                        ,outlierFunc_args = NULL
+                        ,goutlierFunc_args = NULL
 						,db="ANY"
 						)
 		)
@@ -193,10 +205,42 @@ makeQaTask <- function(db=.db,qaName,description,qaLevel,pop,formula, type, plot
 #' }
 read.qaTask <-function(checkListFile, ...)
 {
-  df<-read.csv(checkListFile)
+  if(tools::file_ext(checkListFile) == "gz"){
+    df <- read.csv(checkListFile)
+  }else
+  {
+    dt <- fread(checkListFile)
+    df <- as.data.frame(dt)
+  }
   .read.qaTask(df,...)
 }
 
+#' gating arguments parser (copied from openCyto in order to drop the dependence for ITN, eventually we want to merge them)
+#' 
+#' parsing the arguments read from `args` columns of csv template into 
+#' list of paired arguments
+.argParser <- function(txt, split = TRUE) {
+  # trim whitespaces at beginning and the end of string
+  txt <- gsub("^\\s*|\\s*$", "", txt)
+  
+  if (split) {
+    paired_args <- paste("c(", txt, ")")
+    paired_args <- try(parse(text = paired_args), silent = TRUE)
+    if (class(paired_args) == "try-error") {
+      errmsg <- attr(paired_args, "condition")
+      msg <- conditionMessage(errmsg)
+      stop("invalid gating argument:\n", msg)
+    }
+    
+    paired_args <- as.list(as.list(paired_args)[[1]])[-1]
+    names(paired_args) <- names(paired_args)
+  } else {
+    paired_args <- as.symbol(txt)
+    paired_args <- list(paired_args)
+  }
+  
+  paired_args
+}
 #' construct qatask from a data.frame
 .read.qaTask<-function(df,db=.db)
 {
@@ -204,21 +248,75 @@ read.qaTask <-function(checkListFile, ...)
 	db$qaTaskTbl<-df
 	qaTask.list<-apply(df,1,function(curRow,db){
                           
-                          filter <- curRow["subset"]
+                          plotType <- curRow["plotType"]
+                        
+                          filter <- gsub("^\\s*|\\s*$", "", curRow["subset"]) #trim the leading and trailing space
                           if(!is.na(filter))
-                            filter <- parse(text = filter)
+                          {
+                            if(nchar(filter) > 0)
+                              filter <- parse(text = filter)
+                            else
+                              filter  <- NULL
+                          }else
+                            filter  <- NULL
+                          #parse outlier functions                          
+                          outlierFunc_args <- goutlierFunc_args <- list()
+                          
+                          outlierFunc <- curRow["outlierFunc"]
+                          outlierFunc <- eval(parse(text = outlierFunc))
+                          if(is.function(outlierFunc))
+                          {
+                            
+                            outlierFunc_args <- curRow["outlierFunc_args"]
+                            
+                            if(!is.na(outlierFunc_args))
+                              outlierFunc_args <- .argParser(outlierFunc_args)
+                            
+                          }else{
+                            message("Outlier function is not specified!")
+                            if(plotType=="bwplot")
+                            {
+                              outlierFunc <- qoutlier
+                              message("'qoutlier' will be used as default outlier function.")
+                            }else
+                            {
+                              outlierFunc <- outlier.norm
+                              message("'outlier.norm' will be used as default outlier function.")
+                            }
+                            
+                          }
+                          
+                          
+                          goutlierFunc <- curRow["goutlierFunc"]
+                          goutlierFunc <- eval(parse(text = goutlierFunc))
+                          if(is.function(goutlierFunc))
+                          {
+                            goutlierFunc_args <- curRow["goutlierFunc_args"]
+                            if(!is.na(aoutlierFunc_args))
+                              outlierFunc_args <- .argParser(outlierFunc_args)
+                             
+                          }else{
+                            goutlierFunc <- outlier.norm
+                          }
+                          
+                          
+                          
                     		curQa<-new("qaTask"
-                        				,qaID=as.integer(curRow["qaID"])
-                        				,qaName=curRow["qaName"]
-                        				,description=curRow["description"]
-                        				,qaLevel=curRow["qaLevel"]
-                        				,pop=curRow["pop"]
-                        				,formula=as.formula(curRow["formula"])
-                                        ,type=curRow["type"]
+                        				,qaID = as.integer(curRow["qaID"])
+                        				,qaName = curRow["qaName"]
+                        				,description = curRow["description"]
+                        				,qaLevel = curRow["qaLevel"]
+                        				,pop = curRow["pop"]
+                        				,formula = as.formula(curRow["formula"])
+                                        ,type = curRow["type"]
                                         ,subset = filter
-                        				,plotType=curRow["plotType"]
+                        				,plotType = plotType
                                         ,highlight = qa.par.get("idCol")
-                        				,db=db
+                                        ,outlierFunc = outlierFunc
+                                        ,goutlierFunc = goutlierFunc
+                                        ,outlierFunc_args = outlierFunc_args
+                                        ,goutlierFunc_args = goutlierFunc_args
+                        				,db = db
                         		    )
                 		  curQa					
 			            } ,db)
